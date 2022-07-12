@@ -24,7 +24,7 @@ ISRELEASED = False
 PYTHON_MIN_VERSION = "3.9"
 PYTHON_REQUIRES = f">={PYTHON_MIN_VERSION}"
 
-INSTALL_REQUIRES = ["numpy", "pandas", "matplotlib", "scikit-image", "nptyping", "piscat", "jupyter"]
+INSTALL_REQUIRES = ["numpy", "pandas", "matplotlib", "scikit-image", "nptyping", "jupyter", "piscat"]
 
 PACKAGES = ["ISCAT_Analysis"]
 
