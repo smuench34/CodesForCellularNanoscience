@@ -352,7 +352,7 @@ class PostProcessingWindow(NewMainWindow):
                                                             threshold=self.threshold_value.value())
         # Um den Grenzwert variabel zu machen und dabei schnell zu bleiben, muss irgendwie auf dog_images
         # in der Funktion feature.blob_dog (from skimage import feature) zugegriffen werden.
-        # Dort sind für jedes Pixel in jedem Bild des Videos die Werte nach dem DoG abgespeichert.Ein Pixel wird dann
+        # Dort sind für jedes Pixel in jedem Bild des Videos die Werte nach dem DoG abgespeichert. Ein Pixel wird dann
         # als Partikelzentrum detektiert, wenn der Pixelwert über dem threshold liegt.
         self.show_particle_locations()
 
