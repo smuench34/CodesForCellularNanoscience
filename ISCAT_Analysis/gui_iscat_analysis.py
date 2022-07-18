@@ -39,6 +39,7 @@ class PandasModel(QAbstractTableModel):
             return self._data.columns[col]
         return None
 
+
 class MyCircleOverlay(pg.CircleROI):
     def __init__(self, pos, size, **args):
         pg.ROI.__init__(self, pos, size, **args)
@@ -49,13 +50,13 @@ class MyCircleOverlay(pg.CircleROI):
 class NewMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.main_layout = QGridLayout()
+        self.layout_window = QVBoxLayout()
 
 
 class NewCustomWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.main_layout = QGridLayout()
+        self.layout_window = QGridLayout()
 
 
 class PostProcessingWindow(NewMainWindow):
@@ -64,25 +65,29 @@ class PostProcessingWindow(NewMainWindow):
 
         self.image_series = None
         self.detected_particles = None
+        self.table_particles = QTableView()
+        self.table_particles.setWindowTitle("Particle contrasts")
+        self.table_particles.setWindowIcon(QIcon('app_logo.jpg'))
+        self.trajectories = None
 
         # General properties
-        self.setWindowTitle("Post-processing routine")
+        self.setWindowTitle("Video parameters")
+        self.setWindowIcon(QIcon('app_logo.jpg'))
+        self.setGeometry(0, 0, 300, 0)
 
         # input widget:
-        input_layout = QGridLayout()
+        layout_input = QGridLayout()
         self.button_start = QPushButton("Start")
-        self.button_clear = QPushButton("Clear all")
-        self.input_path = QTextEdit("C:/Users/sandr/Desktop/Uni/Tuebingen/HiWi/Data/01_26_22/")
-        self.input_choices = QComboBox()
-        self.input_choices.addItems(["C:/Users/sandr/Desktop/Uni/Tuebingen/HiWi/Data/",
-                                     "C:/Users/sandr/Desktop/Uni/Tuebingen/Master/Masterarbeit/Data/"])
+        label_data_input = QLabel("Data directory")
+        self.txt_input_path = QLineEdit("C:/Users/sandr/Desktop/Uni/Tuebingen/HiWi/Data/01_26_22/")
+        self.btn_search_dir = QPushButton("...")
+        self.btn_search_dir.clicked.connect(self.btn_search_dir_is_clicked)
 
-        input_layout.addWidget(self.button_clear, 0, 0)
-        input_layout.addWidget(self.button_start, 0, 1)
-        input_layout.addWidget(self.input_path, 1, 0)
-        input_layout.addWidget(self.input_choices, 2, 0)
+        layout_input.addWidget(self.txt_input_path, 0, 0)
+        layout_input.addWidget(self.btn_search_dir, 0, 1)
 
-        self.main_layout.addLayout(input_layout, 0, 0)
+        self.layout_window.addWidget(label_data_input, 0)
+        self.layout_window.addLayout(layout_input, 1)
 
         # roi_widget:
         roi_layout = QGridLayout()
@@ -130,7 +135,7 @@ class PostProcessingWindow(NewMainWindow):
         roi_layout.addWidget(self.check_full_roi, 3, 0)
         self.disable = False
 
-        self.main_layout.addLayout(roi_layout, 1, 0)
+        self.layout_window.addLayout(roi_layout, 2)
 
         # Batch size widget:
 
@@ -144,7 +149,7 @@ class PostProcessingWindow(NewMainWindow):
         batch_layout.addWidget(self.batch_size)
         batch_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        self.main_layout.addLayout(batch_layout, 1, 1)
+        self.layout_window.addLayout(batch_layout, 3)
 
         # fps widget:
 
@@ -158,14 +163,18 @@ class PostProcessingWindow(NewMainWindow):
         fps_layout.addWidget(self.fps)
         fps_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        self.main_layout.addLayout(fps_layout, 1, 2)
+        self.layout_window.addLayout(fps_layout, 4)
+
+        self.layout_window.addWidget(self.button_start, 5)
 
         main_widget = QWidget()
-        main_widget.setLayout(self.main_layout)
+        main_widget.setLayout(self.layout_window)
         self.setCentralWidget(main_widget)
 
         # Plot Window:
         self.plot_window = NewMainWindow()
+        self.plot_window.setWindowTitle("ISCAT video")
+        self.plot_window.setWindowIcon(QIcon('app_logo.jpg'))
         self.plot_window.resize(1000, 1000)
 
         # Toolbar:
@@ -181,13 +190,25 @@ class PostProcessingWindow(NewMainWindow):
         self.plot.setLabel(axis='left', text="y pixel position")
         self.plot.setLabel(axis='bottom', text="x pixel position")
         self.imv = pg.ImageView(view=self.plot)
+        self.imv.roi.removeHandle(0)
+        self.imv.roi.removeHandle(0)
         self.imv.roi.setSize(size=(1, 1))
         self.imv.ui.roiBtn.setToolTip("Shows contrast of one pixel over time. With a mouse click inside the picture the considered pixel can be changed.")
-        self.imv.scene.sigMouseClicked.connect(self.set_roi_position)
+        self.imv.scene.sigMouseClicked.connect(self.scene_clicked)
 
-        self.plot_window.main_layout.addWidget(self.imv, 0, 0)
+        self.plot_window.layout_window.addWidget(self.imv, 0)
+
+        # Show plot window:
+
+        plot_main_widget = QWidget()
+        plot_main_widget.setLayout(self.plot_window.layout_window)
+        self.plot_window.setCentralWidget(plot_main_widget)
 
         # Overlay parameters:
+        self.edit_window = NewMainWindow()
+        self.edit_window.setWindowTitle("Detection parameters")
+        self.edit_window.setWindowIcon(QIcon('app_logo.jpg'))
+        self.edit_window.setGeometry(1000, 50, 220, 0)
         self.overlay_parameters_layout = QGridLayout()
 
         self.show_overlay = QCheckBox()
@@ -237,18 +258,18 @@ class PostProcessingWindow(NewMainWindow):
         self.button_set_new_params.setDisabled(True)
         self.overlay_parameters_layout.addWidget(self.button_set_new_params, 5, 0)
 
-        self.plot_window.main_layout.addLayout(self.overlay_parameters_layout, 1, 0)
+        self.edit_window.layout_window.addLayout(self.overlay_parameters_layout, 0)
 
         self.button_histogram = QPushButton()
         self.button_histogram.setText("Get histogram")
         self.button_histogram.setDisabled(True)
-        self.plot_window.main_layout.addWidget(self.button_histogram, 2, 0)
+        self.edit_window.layout_window.addWidget(self.button_histogram, 1)
 
-        # Show plot window:
+        # Show edit window:
 
-        plot_main_widget = QWidget()
-        plot_main_widget.setLayout(self.plot_window.main_layout)
-        self.plot_window.setCentralWidget(plot_main_widget)
+        edit_main_widget = QWidget()
+        edit_main_widget.setLayout(self.edit_window.layout_window)
+        self.edit_window.setCentralWidget(edit_main_widget)
 
         # Actions:
 
@@ -258,22 +279,26 @@ class PostProcessingWindow(NewMainWindow):
         self.button_set_new_params.clicked.connect(self.set_new_params)
         self.imv.sigTimeChanged.connect(self.show_particle_locations)
         self.button_histogram.clicked.connect(self.get_histogram)
+        self.table_particles.clicked.connect(self.display_particle_trajectory)
 
-    def set_roi_position(self, evt):
+    def btn_search_dir_is_clicked(self):
+        file = str(QFileDialog.getExistingDirectory(self))
+        self.txt_input_path.setText(file + "/")
+
+    def scene_clicked(self, evt):
         if self.imv.ui.roiBtn.isChecked():
             x = self.imv.getImageItem().mapFromScene(evt.scenePos()).x()
             y = self.imv.getImageItem().mapFromScene(evt.scenePos()).y()
-            self.imv.roi.setSize(size=(1, 1))
             self.imv.roi.setPos(pos=(int(x), int(y)))
 
     def start_button_clicked(self):
-        if self.check_full_roi:
-            self.image_series = ImageSeries(path=self.input_path.toPlainText(),
+        if self.disable:
+            self.image_series = ImageSeries(path=self.txt_input_path.text(),
                                        fps=self.fps.value(),
                                        batch_size=self.batch_size.value())
         else:
-            roi = ((self.roi_x_min.value(), self.roi_x_max.value()), (self.roi_y_min.value(), self.roi_y_max.value()))
-            self.image_series = ImageSeries(path=self.input_path.toPlainText(),
+            roi = (self.roi_x_min.value(), self.roi_x_max.value(), self.roi_y_min.value(), self.roi_y_max.value())
+            self.image_series = ImageSeries(path=self.txt_input_path.text(),
                                        fps=self.fps.value(),
                                        batch_size=self.batch_size.value(),
                                        region_of_interest=RegionOfInterest(*roi))
@@ -287,6 +312,7 @@ class PostProcessingWindow(NewMainWindow):
         self.imv.setColorMap(cmap)
 
         self.plot_window.show()
+        self.edit_window.show()
 
     def show_particle_locations(self):
         if len(self.plot.items) > 3:
@@ -297,8 +323,7 @@ class PostProcessingWindow(NewMainWindow):
             frame_df = self.detected_particles.loc[self.detected_particles["frame"] == current_frame_num]
             pen = QPen(Qt.red, 0.1)
             for x, y, sigma in zip(frame_df.loc[:, "x"], frame_df.loc[:, "y"], frame_df.loc[:, "sigma"]):
-                self.imv.addItem(MyCircleOverlay(pos=(x - sigma, y - sigma), size=(2 * sigma), pen=pen, movable=False))
-
+                self.imv.addItem(MyCircleOverlay(pos=(x - sigma + 0.5, y - sigma + 0.5), size=(2 * sigma), pen=pen, movable=False))
             self.imv.setCurrentIndex(current_frame_num)
 
     def show_overlay_stateChanged(self):
@@ -325,6 +350,10 @@ class PostProcessingWindow(NewMainWindow):
                                                             max_sigma=self.max_sigma_value.value(),
                                                             sigma_ratio=self.sigma_ratio_value.value(),
                                                             threshold=self.threshold_value.value())
+        # Um den Grenzwert variabel zu machen und dabei schnell zu bleiben, muss irgendwie auf dog_images
+        # in der Funktion feature.blob_dog (from skimage import feature) zugegriffen werden.
+        # Dort sind für jedes Pixel in jedem Bild des Videos die Werte nach dem DoG abgespeichert.Ein Pixel wird dann
+        # als Partikelzentrum detektiert, wenn der Pixelwert über dem threshold liegt.
         self.show_particle_locations()
 
     def get_histogram(self):
@@ -365,11 +394,11 @@ class PostProcessingWindow(NewMainWindow):
             except:
                 pass
 
-        correct_trajectories = [t for i, t in enumerate(all_trajectories) if i in valid_ones]
+        self.trajectories = [t for i, t in enumerate(all_trajectories) if i in valid_ones]
 
         his2 = PlotProteinHistogram(intersection_display_flag=True, imgSizex=10, imgSizey=5)
         his2(folder_name='',
-             particles=correct_trajectories,
+             particles=self.trajectories,
              batch_size=self.image_series.batch_size,
              video_frame_num=self.image_series.differential_video.shape[0],
              MinPeakWidth=90,
@@ -385,10 +414,22 @@ class PostProcessingWindow(NewMainWindow):
         print(df_transposed)
 
         model = PandasModel(df_transposed)
-        self.view = QTableView()
-        self.view.setModel(model)
-        self.view.resize(800, 600)
-        self.view.show()
+        self.table_particles.setModel(model)
+        self.table_particles.resize(800, 600)
+        self.table_particles.show()
+
+    def display_particle_trajectory(self):
+        idx = self.table_particles.selectedIndexes()
+        intensities = np.array([self.trajectories[idx[0].row()][2]])
+        min_intensity_idx = np.argmin(intensities)
+        frame = self.trajectories[idx[0].row()][4][min_intensity_idx]
+        x = self.trajectories[idx[0].row()][6][min_intensity_idx]
+        y = self.trajectories[idx[0].row()][7][min_intensity_idx]
+        if not self.imv.ui.roiBtn.isChecked():
+            self.imv.ui.roiBtn.click()
+        self.show_overlay.setChecked(False)
+        self.imv.roi.setPos(pos=(int(x), int(y)))
+        self.imv.setCurrentIndex(frame)
 
     def play_video(self):
         if self.imv.currentIndex == len(self.image_series.differential_video) - 1:
