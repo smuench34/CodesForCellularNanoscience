@@ -1,0 +1,11 @@
+1. The program is only tested with a screen resolution of 1920 x 1080
+
+2. Installation guide for windows:
+	-Important: You need python 3 and pip3!
+
+	- Download gui_iscat folder from nextcloud
+	- Open command line
+	- Navigate into the downloaded folder
+	- Use the following command: pip3 install -r requirements.txt
+	- Now you should be able to run the program with py gui_iscat_analysis.py
+
