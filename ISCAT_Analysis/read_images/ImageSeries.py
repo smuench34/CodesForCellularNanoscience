@@ -13,6 +13,7 @@ from nptyping import NDArray, Shape
 from piscat.BackgroundCorrection import NoiseFloor, DifferentialRollingAverage
 from piscat.Preproccessing import Normalization
 
+
 # plt.style.use("master_presentation")
 
 
@@ -110,6 +111,7 @@ class ImageSeries(object):
     """
     Contains all the information of one particular image series.
     """
+
     def __init__(self,
                  path: str,
                  fps: int,
@@ -139,31 +141,55 @@ class ImageSeries(object):
         self.differential_video = None  # iSCAT Video with differential images
         self.psf = None  # Detected point spread function of all
 
-    def get_video(self) -> None:
-        """
-        The IRM image series is thread in and saved to raw_video, raw_video_pn and power_fluctuation. After the first
-        time calling this function it is recommended to save the arrays via the "save_videos" function. With this a
-        lot of computation time is saved, when calling this function again.
-        """
+    def get_save_dir_and_str(self):
         if self.region_of_interest is not None:
             roi_string = f"_roi_x_{self.region_of_interest.x_min}_{self.region_of_interest.x_max}_" \
                          f"y_{self.region_of_interest.y_min}_{self.region_of_interest.y_max}"
         else:
             roi_string = ""
-        if os.path.isdir(self.path + f"video{roi_string}"):
-            file0 = open(self.path + f"video{roi_string}/video{roi_string}.p", "rb")
+        if self.considered_pictures is not None:
+            considered_pictures_string = f"_images_{self.considered_pictures.min_idx}" \
+                                         f"_to_{self.considered_pictures.max_idx}"
+        else:
+            considered_pictures_string = ""
+
+        _str = f"{roi_string}{considered_pictures_string}"
+        _dir = self.path + "/video" + _str
+
+        return _dir, _str
+
+    def get_video(self, delete_same_images: bool = False) -> None:
+        """
+        The IRM image series is thread in and saved to raw_video, raw_video_pn and power_fluctuation. After the first
+        time calling this function it is recommended to save the arrays via the "save_videos" function. With this a
+        lot of computation time is saved, when calling this function again.
+
+        Args:
+            delete_same_images (bool): If True same images are deleted.
+        """
+        save_dir, save_str = self.get_save_dir_and_str()
+        if os.path.isdir(save_dir):
+            file0 = open(f"{save_dir}/video{save_str}.p", "rb")
             self.raw_video = pickle.load(file0)
             file0.close()
-            file1 = open(self.path + f"video{roi_string}/video_pn{roi_string}.p", "rb")
+
+            file1 = open(f"{save_dir}/video_pn{save_str}.p", "rb")
             self.raw_video_pn = pickle.load(file1)
             file1.close()
-            file2 = open(self.path + f"video{roi_string}/power_fluctuation.p", "rb")
+
+            file2 = open(f"{save_dir}/power_fluctuation.p", "rb")
             self.power_fluctuation = pickle.load(file2)
             file2.close()
+
+            file3 = open(f"{save_dir}/differential_video_batch_size_{self.batch_size}{save_str}.p", "rb")
+            self.differential_video = pickle.load(file3)
+            file3.close()
 
         else:
             self.raw_video = read_images(self.path, self.considered_pictures, self.region_of_interest)
             self.raw_video_pn, self.power_fluctuation = Normalization(video=self.raw_video).power_normalized()
+            if delete_same_images:
+                self.delete_consecutive_identical_images()
 
     def create_differential_video(self,
                                   with_power_normalization: bool = True) -> None:
@@ -173,14 +199,15 @@ class ImageSeries(object):
             with_power_normalization (bool): Takes the power normalized IRM images if True, otherwise it takes the raw
             IRM images without the power normalization
         """
-        if with_power_normalization:
-            vid = self.raw_video_pn
-        else:
-            vid = self.raw_video
-        DRA = DifferentialRollingAverage(video=vid, batchSize=self.batch_size)
-        self.differential_video, _ = DRA.differential_rolling(FPN_flag=False,
-                                                              select_correction_axis='Both',
-                                                              FFT_flag=False)
+        if self.differential_video is None:
+            if with_power_normalization:
+                vid = self.raw_video_pn
+            else:
+                vid = self.raw_video
+            dra = DifferentialRollingAverage(video=vid, batchSize=self.batch_size)
+            self.differential_video, _ = dra.differential_rolling(FPN_flag=False,
+                                                                  select_correction_axis='Both',
+                                                                  FFT_flag=False)
 
     def save_videos(self, saving_list: list[str], delete_raw_images: bool = False) -> None:
         """
@@ -195,27 +222,26 @@ class ImageSeries(object):
             shutil.rmtree(self.path)
             os.makedirs(self.path)
 
-        roi_string = f"_roi_x_{self.region_of_interest.x_min}_{self.region_of_interest.x_max}_" \
-                     f"y_{self.region_of_interest.y_min}_{self.region_of_interest.y_max}"
-        os.makedirs(self.path + f"video{roi_string}")
+        save_dir, save_str = self.get_save_dir_and_str()
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
 
-        if "raw" in saving_list:
-            pickle.dump(self.raw_video, open(self.path + f"/video{roi_string}/video{roi_string}.p", "wb"))
+            if "raw" in saving_list:
+                pickle.dump(self.raw_video, open(f"{save_dir}/video{save_str}.p", "wb"))
 
-        if "raw with power normalization" in saving_list:
-            pickle.dump(self.raw_video_pn, open(self.path + f"/video{roi_string}/video_pn{roi_string}.p", "wb"))
+            if "raw with power normalization" in saving_list:
+                pickle.dump(self.raw_video_pn, open(f"{save_dir}/video_pn{save_str}.p", "wb"))
 
-        if "power fluctuation" in saving_list:
-            pickle.dump(self.power_fluctuation, open(self.path + f"/video{roi_string}/power_fluctuation.p", "wb"))
+            if "power fluctuation" in saving_list:
+                pickle.dump(self.power_fluctuation, open(f"{save_dir}/power_fluctuation.p", "wb"))
 
-        if "differential video" in saving_list:
-            if self.differential_video is not None:
-                pickle.dump(self.raw_video,
-                            open(self.path + f"/video{roi_string}/differential_video_batch_size_"
-                                             f"{self.batch_size}_{roi_string}.p", "wb"))
-            else:
-                raise TypeError("Differential video is None Type. "
-                                "Most likely it is because the differential video was not yet created.")
+            if "differential video" in saving_list:
+                if self.differential_video is not None:
+                    pickle.dump(self.differential_video, open(f"{save_dir}/differential_video_batch_size_"
+                                                              f"{self.batch_size}{save_str}.p", "wb"))
+                else:
+                    raise TypeError("Differential video is None Type. "
+                                    "Most likely it is because the differential video was not created, yet.")
 
     def get_noise_floor(self,
                         batch_sizes: list[int],
@@ -297,7 +323,7 @@ class ImageSeries(object):
         pickle.dump(batch_sizes, open(plot_path + "/Noise Floor/batch_sizes.p", "wb"))
         for nf, name in zip(noise_floors, noise_floor_names):
             pickle.dump(nf, open(plot_path + f"/Noise Floor/{name.replace(' + ', '_')}.p", "wb"))
-        path = plot_path + "/noise_floor.png"
+        path = plot_path + "/Noise Floor/noise_floor.png"
         plt.show()
         fig.savefig(path, bbox_inchees="tight")
 
@@ -311,7 +337,7 @@ class ImageSeries(object):
             4: power spectrum vs. frequency (log-log plot)
         It is possible to choose more than one plot. Then a figure with all the desired plots is made.
         The power fluctuation figure is saved into the subfolder Plots inside the IRM images folder.
-        The data is saved in the subfolder Power Fluctuation inside the Plots folder as follows:
+        The data is saved in the subfolder Power Fluctuation inside the plot folder as follows:
             The y-data of the power fluctuation in real space is saved as "power_fluctuation_real_space",
             the x-data of the power spectrum (Fourier space) is saved as "frequency_axis_fourier_space",
             the y-data of the power spectrum (Fourier space) is saved as "power_spectrum_fourier_space".
@@ -377,4 +403,31 @@ class ImageSeries(object):
         pickle.dump(frequency_axis, open(plot_path + "/Power Fluctuation/frequency_axis_fourier_space.p", "wb"))
         pickle.dump(sxx, open(plot_path + "/Power Fluctuation/power_spectrum_fourier_space.p", "wb"))
         plt.show()
-        fig.savefig(plot_path + "/power_fluctuation.png", bbox_inches="tight")
+        fig.savefig(plot_path + "/Power Fluctuation/power_fluctuation.png", bbox_inches="tight")
+
+    def delete_consecutive_identical_images(self):
+        """
+        Deletes consecutive identical images in an iSCAT video (in raw and power normalized video).
+
+        The number of same images is printed together with the number of remaining images for the iSCAT video.
+        Depending on the remaining images a new frame rate is calculated and set for the considered iSCAT video.
+        :return:
+        """
+        idx_positions = []
+        num_same_images = 0
+        num_different_images = 0
+        for i in range(len(self.raw_video) - 1):
+            test_image1 = self.raw_video[i]
+            test_image2 = self.raw_video[i + 1]
+            diff_tests = test_image1 - test_image2
+            if diff_tests.any() != 0:
+                num_different_images += 1
+            else:
+                num_same_images += 1
+                idx_positions.append(i + 1)
+        self.raw_video = np.delete(self.raw_video, idx_positions, axis=0)
+        self.raw_video_pn = np.delete(self.raw_video_pn, idx_positions, axis=0)
+        self.fps = self.fps * (num_different_images / (num_same_images + num_different_images))
+        print(f"{num_same_images} same images are detected.")
+        print(f"{num_different_images} different images are detected.")
+        print(f"New calculated fps is: {self.fps}")
